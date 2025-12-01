@@ -51,6 +51,10 @@
       background-color: var(--ins-color);
       color: white;
     }
+
+    #amountHelper {
+      color: red;
+    }
   </style>
 </head>
 
@@ -76,7 +80,8 @@
       <form id="loanForm">
         <label for="amount">
           Loan Amount in EURMTL:
-          <input type="number" id="amount" placeholder="300" required>
+          <input type="number" id="amount" placeholder="300" required aria-describedby="amountHelper"> 
+          <small id="amountHelper"></small>
         </label>
 
         <label for="borrowerAddress">
@@ -132,7 +137,15 @@
   <script>
     const MTLEDU_FUND = 'GABOMZUBRFU77LRHZY6ZPA6F463QJDK2J54S66QV7LQUTS5B7X54MEDU';
 
-    // Fetch and display the EURMTL balance for the fund account
+    let fundBalanceValue = 0; // Store the fund balance value for validation
+
+    const amountHelper = document.getElementById('amountHelper');
+    const amountInput = document.getElementById('amount');
+
+    // Load the fund balance when the page loads
+    document.addEventListener('DOMContentLoaded', displayFundBalance);
+
+    // Update fundBalanceValue when balance is loaded
     async function displayFundBalance() {
       try {
         const server = new StellarSdk.Horizon.Server('https://horizon.stellar.org');
@@ -145,18 +158,57 @@
         );
 
         if (eurmtlBalance) {
-          document.getElementById('fundBalance').textContent = parseFloat(eurmtlBalance.balance).toLocaleString();
+          fundBalanceValue = parseFloat(eurmtlBalance.balance);
+          document.getElementById('fundBalance').textContent = fundBalanceValue.toLocaleString();
         } else {
+          fundBalanceValue = 0;
           document.getElementById('fundBalance').textContent = '0';
         }
+
+        // Validate amount after balance is loaded
+        validateAmount();
       } catch (error) {
         console.error('Error fetching fund balance:', error);
         document.getElementById('fundBalance').textContent = 'Error loading';
+        fundBalanceValue = 0;
       }
     }
 
-    // Load the fund balance when the page loads
-    document.addEventListener('DOMContentLoaded', displayFundBalance);
+    // Helper function to update amount helper text and set aria-invalid attribute appropriately
+    function updateAmountHelper(text, isInvalid) {
+      amountHelper.textContent = text;
+      if (isInvalid) {
+        amountInput.setAttribute('aria-invalid', 'true');
+      } else {
+        amountInput.removeAttribute('aria-invalid');
+      }
+    }
+
+    // Function to validate amount against fund balance
+    function validateAmount() {
+      if (!amountInput.value) {
+        updateAmountHelper('', false);
+        return;
+      }
+
+      const amount = parseFloat(amountInput.value);
+
+      if (isNaN(amount) || amount <= 0) {
+        updateAmountHelper('', true);
+        return;
+      }
+
+      if (amount > fundBalanceValue) {
+        const difference = (amount - fundBalanceValue).toFixed(2);
+        updateAmountHelper(`Fund account doesn't have enough EURMTL. Send ${difference} EURMTL more to fund account`, true);
+      } else {
+        updateAmountHelper('', false);
+      }
+    }
+
+    // Add event listener to amount field to validate when user types
+    amountInput.addEventListener('input', validateAmount);
+    amountInput.addEventListener('change', validateAmount);
 
     document.getElementById('assetName').addEventListener('input', function () {
       const preview = document.getElementById('assetNamePreview');
@@ -241,7 +293,15 @@
 
     document.getElementById('loanForm').addEventListener('submit', async function (e) {
       e.preventDefault();
-      const amount = document.getElementById('amount').value;
+
+      // Validate amount before submitting
+      validateAmount();
+      if (amountHelper.textContent !== '') {
+        // If there's an error message, don't submit the form
+        return;
+      }
+
+      const amount = amountInput.value;
       const borrowerAddress = document.getElementById('borrowerAddress').value;
       let assetName = document.getElementById('assetName').value;
 
